@@ -1,5 +1,5 @@
 import discord
-from discord.ext import commands, tasks  # 確保導入 tasks
+from discord.ext import commands, tasks
 import asyncio
 import random
 import logging
@@ -21,6 +21,8 @@ TARGET_GUILD_ID = int(_GUILD_ID_STR)
 
 TODO_CHANNEL_ID = int(os.getenv("TODO_CHANNEL_ID", TARGET_GUILD_ID)) 
 
+Typing_Duration_Max = 30.0
+
 # 日誌
 logging.basicConfig(
     level=logging.INFO,
@@ -41,6 +43,24 @@ class MySelfBot(commands.Bot):
         self.target_guild_id = TARGET_GUILD_ID
         self.todo_sent_today = False 
 
+    def calculate_typing_duration(self, text: str, mode: str = "long") -> float:
+        """
+        計算模擬打字所需時間
+        mode "long": 每字 0.05s, 上限 30s (適合 todo.txt)
+        mode "short": 每字 0.5s, 上限 10s (適合自動回覆)
+        """
+        length = len(text)
+        
+        if mode == "short":
+            # 短內容：打字較慢但總時長短
+            duration = min(length * 0.5, 10.0)
+        else:
+            # 長內容：打字較快但總時長長
+            duration = min(length * 0.05, Typing_Duration_Max)
+            
+        # 加入一點隨機浮動 (±10%)，避免每次打字時間都精確到跟機器人一樣
+        return duration * random.uniform(0.9, 1.1)
+
     async def on_ready(self):
         user = cast(discord.ClientUser, self.user)
         print("-" * 50)
@@ -57,7 +77,9 @@ class MySelfBot(commands.Bot):
                 with open(todo_path, "r", encoding="utf-8") as f:
                     content = f.read().strip()
                 if content:
+                    typing_duration = self.calculate_typing_duration(content, mode="long")
                     print(f"【預讀 todo.txt 成功】內容如下：\n{content}")
+                    print(f"💡 提示：發送時將執行約 {typing_duration:.1f} 秒的「打字中」狀態 (上限 {Typing_Duration_Max:.1f}s)。")
                 else:
                     print("⚠️ 警告：todo.txt 存在，但是內容是空的！")
             except Exception as e:
@@ -79,8 +101,8 @@ class MySelfBot(commands.Bot):
         if now.weekday() >= 5: 
             return
 
-        # 07:55 ~ 07:59
-        target_time = (now.hour == 7 and 55 <= now.minute <= 59)
+        # 07:50 ~ 07:58
+        target_time = (now.hour == 7 and 50 <= now.minute <= 58)
 
         if target_time and not self.todo_sent_today:
             extra_delay = random.randint(1, 40)
@@ -113,6 +135,11 @@ class MySelfBot(commands.Bot):
                 channel = await self.fetch_channel(TODO_CHANNEL_ID)
 
             if isinstance(channel, discord.abc.Messageable):
+                # typing
+                async with channel.typing():
+                    duration = self.calculate_typing_duration(content, mode="long")
+                    await asyncio.sleep(duration)
+
                 await channel.send(content)
                 logging.info(f"[{datetime.now()}] TODO 已發送")
         except Exception as e:
@@ -128,10 +155,15 @@ class MySelfBot(commands.Bot):
                 delay = random.randint(10, 30)
                 logging.info(f"偵測到 Tag (來自 {message.author.name})")
                 await asyncio.sleep(delay)
-                
+
                 responses = ["收到", "了解", "OK，收到", "好的", "我看一下"]
+                reply = random.choice(responses)
+                
+                # typing
+                async with message.channel.typing():
+                    await asyncio.sleep(random.uniform(1.5, 10)+self.calculate_typing_duration(reply, mode="short"))
                 try:
-                    await message.reply(random.choice(responses))
+                    await message.reply(reply)
                     logging.info(f"回覆成功 | 觸發者: {message.author.name}")
                 except Exception as e:
                     logging.error(f"回覆失敗: {e}")
