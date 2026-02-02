@@ -21,7 +21,7 @@ TARGET_GUILD_ID = int(_GUILD_ID_STR)
 
 TODO_CHANNEL_ID = int(os.getenv("TODO_CHANNEL_ID", TARGET_GUILD_ID)) 
 
-Typing_Duration_Max = 30.0
+Typing_Duration_Max = 60.0
 
 # 日誌設定：統一時間戳記格式
 logging.basicConfig(
@@ -52,7 +52,7 @@ class MySelfBot(commands.Bot):
         if mode == "short":
             duration = min(length * 0.5, 10.0)
         else:
-            duration = min(length * 0.05, Typing_Duration_Max)
+            duration = max(length * 0.5, Typing_Duration_Max)
         return duration * random.uniform(0.9, 1.1)
 
     async def on_ready(self):
@@ -62,6 +62,16 @@ class MySelfBot(commands.Bot):
         guild = self.get_guild(self.target_guild_id)
         guild_name = guild.name if guild else "未知伺服器"
         print(f"監控目標: {guild_name} (ID: {self.target_guild_id})")
+        todo_channel = self.get_channel(TODO_CHANNEL_ID)
+        if not todo_channel:
+            try:
+                todo_channel = await self.fetch_channel(TODO_CHANNEL_ID)
+            except:
+                todo_channel = None
+        
+        todo_name = getattr(todo_channel, "name", "未知頻道/私訊")
+        print(f"TODO 頻道: #{todo_name} (ID: {TODO_CHANNEL_ID})")
+
         print("-" * 50)
 
         # 檢查 todo.txt
