@@ -12,6 +12,6 @@ IF NOT EXIST %VENV_DIR% (
     call %VENV_DIR%\Scripts\activate
 )
 
-echo [!] 正在啟動 Self-bot...
-python self_bot.py
+echo [!] 正在啟動 Shadow Worker...
+python shadow_worker.py
 pause

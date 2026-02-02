@@ -1,4 +1,4 @@
-# Discord Personal Assistant (Self-Bot)
+# Shadow Worker (Discord-Self-Bot)
 
 [English] | [[繁體中文](README.zh-TW.md)]
 

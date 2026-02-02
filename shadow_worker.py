@@ -64,7 +64,7 @@ class MySelfBot(commands.Bot):
     async def on_ready(self):
         user = cast(discord.ClientUser, self.user)
         print("-" * 50)
-        print(f"Self-bot 已啟動！登入帳號: {user.name}")
+        print(f"Shadow Worker 已啟動！登入帳號: {user.name}")
         guild = self.get_guild(self.target_guild_id)
         guild_name = guild.name if guild else "未知伺服器"
         print(f"監控目標: {guild_name} (ID: {self.target_guild_id})")
@@ -90,7 +90,7 @@ class MySelfBot(commands.Bot):
         # 啟動背景定時任務
         if not self.daily_todo_task.is_running():
             self.daily_todo_task.start()
-            print(">>> 定時發送 todo.txt 任務已啟動 (週一至週五 07:55~07:59)")
+            print(">>> 定時發送 todo.txt 任務已啟動 (週一至週五 07:50~07:58)")
         print("-" * 50)
 
     @tasks.loop(seconds=60)
