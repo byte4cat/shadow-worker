@@ -34,7 +34,7 @@ logging.basicConfig(
     ]
 )
 
-class MySelfBot(commands.Bot):
+class ShadowWorker(commands.Bot):
     def __init__(self):
         super().__init__(
             command_prefix="!", 
@@ -52,7 +52,7 @@ class MySelfBot(commands.Bot):
         if mode == "short":
             duration = min(length * 0.5, 10.0)
         else:
-            duration = max(length * 0.5, Typing_Duration_Max)
+            duration = max(min(length * 0.2, Typing_Duration_Max), 15.0)
         return duration * random.uniform(0.9, 1.1)
 
     async def on_ready(self):
@@ -118,18 +118,33 @@ class MySelfBot(commands.Bot):
         try:
             with open(todo_path, "r", encoding="utf-8") as f:
                 content = f.read().strip()
-            if not content: return
+            if not content: 
+                logging.warning("todo.txt 內容為空，取消發送。")
+                return
 
             channel = self.get_channel(TODO_CHANNEL_ID) or await self.fetch_channel(TODO_CHANNEL_ID)
 
             if isinstance(channel, discord.abc.Messageable):
+                duration = self.calculate_typing_duration(content, mode="long")
+                channel_name = getattr(channel, "name", "未知頻道")
+
+                logging.info(
+                    f"準備發送 TODO | 頻道: #{channel_name} | 預計打字: {duration:.1f}s\n"
+                    f"--- 內容摘要 ---\n{content}\n"
+                    f"---------------"
+                )
+
                 async with channel.typing():
-                    duration = self.calculate_typing_duration(content, mode="long")
+                    logging.info(f"⏳ [打字中] 正在模擬輸入內容，請稍候...")
                     await asyncio.sleep(duration)
+                
                 await channel.send(content)
-                logging.info("TODO 已發送")
+                logging.info(f"✅ TODO 已成功發送至 #{channel_name}")
+            else:
+                logging.error(f"無法發送訊息：頻道 {TODO_CHANNEL_ID} 不支援發送訊息。")
+                
         except Exception as e:
-            logging.error(f"發送 TODO 失敗: {e}")
+            logging.error(f"❌ 發送 TODO 失敗: {e}")
 
     async def on_message(self, message: discord.Message):
         user = cast(discord.ClientUser, self.user)
@@ -159,6 +174,7 @@ class MySelfBot(commands.Bot):
                 
                 try:
                     async with message.channel.typing():
+                        logging.info(f"⏳ [打字中] 正在模擬輸入內容，請稍候...")
                         await asyncio.sleep(typing_wait)
                     
                     # 回覆並記錄 Log
@@ -169,5 +185,5 @@ class MySelfBot(commands.Bot):
 
 # 啟動
 if __name__ == "__main__":
-    bot = MySelfBot()
-    bot.run(TOKEN)
+    worker = ShadowWorker()
+    worker.run(TOKEN)
