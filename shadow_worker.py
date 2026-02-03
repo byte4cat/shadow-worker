@@ -33,6 +33,9 @@ TODO_WORKDAYS = [int(d.strip()) for d in _workdays_str.split(",")]
 # 解析自動回覆語句
 _responses_str = os.getenv("REPLY_RESPONSES", "收到,了解,OK，收到,好的,我看一下")
 REPLY_RESPONSES = [r.strip() for r in _responses_str.split(",")]
+# 解析私訊回覆白名單
+_dm_reply_str = os.getenv("DM_REPLY_LIST", "")
+DM_REPLY_LIST = [int(i.strip()) for i in _dm_reply_str.split(",") if i.strip()]
 
 Typing_Duration_Max = 60.0
 
@@ -207,18 +210,21 @@ class ShadowWorker(commands.Bot):
         # 排除自己與其他 Bot
         if message.author.id == user.id or message.author.bot:
             return
+
+        is_dm = isinstance(message.channel, discord.DMChannel) and (message.author.id in DM_REPLY_LIST)
+        is_mentioned = message.guild and message.guild.id == self.target_guild_id and user.mentioned_in(message)
         
         # 檢查伺服器與提及
-        if message.guild and message.guild.id == self.target_guild_id:
+        if is_mentioned or is_dm:
             if user.mentioned_in(message):
-                delay = random.randint(10, 30)
+                delay = random.randint(5, 15) if is_dm else random.randint(10, 30)
                 reply_content = random.choice(REPLY_RESPONSES)
                 
                 # 安全獲取頻道名稱 (修正 Pyright 報錯)
                 channel_name = getattr(message.channel, "name", "私訊")
 
                 # 輸出觸發提示
-                logging.info(f"偵測到 Tag (來自 {message.author.name})，將於 {delay} 秒後自動回覆...")
+                source = f"私訊 (來自 {message.author.name})" if is_dm else f"頻道 #{getattr(message.channel, 'name', '未知')}"
                 
                 # 等待隨機延遲
                 await asyncio.sleep(delay)

@@ -56,6 +56,7 @@ TODO_WORKDAYS=0,1,2,3,4
 # --- Auto-Response Settings ---
 # Comma-separated list of random replies for mentions (@me)
 REPLY_RESPONSES=OK,Understood,Got it,On it,I will check it out
+DM_REPLY_LIST=123456789012345678,987654321098765432
 ```
 
 ## Content Preparation
