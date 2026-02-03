@@ -39,7 +39,6 @@ DM_REPLY_LIST = [int(i.strip()) for i in _dm_reply_str.split(",") if i.strip()]
 
 Typing_Duration_Max = 60.0
 
-# 日誌設定：統一時間戳記格式
 logging.basicConfig(
     level=logging.INFO,
     format='[%(asctime)s] %(message)s',
@@ -59,6 +58,7 @@ class ShadowWorker(commands.Bot):
         )
         self.target_guild_id = TARGET_GUILD_ID
         self.last_sent_date = ""
+        self.dm_reply_list = DM_REPLY_LIST 
 
     def calculate_typing_duration(self, text: str, mode: str = "long") -> float:
         """
@@ -78,6 +78,7 @@ class ShadowWorker(commands.Bot):
         guild = self.get_guild(self.target_guild_id)
         guild_name = guild.name if guild else "未知伺服器"
         print(f"監控目標: {guild_name} (ID: {self.target_guild_id})")
+        print(f"DM: {self.dm_reply_list})")
         todo_channel = self.get_channel(TODO_CHANNEL_ID)
         if not todo_channel:
             try:
@@ -120,17 +121,17 @@ class ShadowWorker(commands.Bot):
         now = datetime.now()
         today_str = now.strftime("%Y-%m-%d")
 
-        # 1. 檢查是否為工作日
+        # 檢查是否為工作日
         if now.weekday() not in TODO_WORKDAYS:
             return
 
-        # 2. 判斷是否在區間內
+        # 判斷是否在區間內
         current_total_min = now.hour * 60 + now.minute
         start_total_min = START_H * 60 + START_M
         end_total_min = END_H * 60 + END_M
 
         if start_total_min <= current_total_min <= end_total_min:
-            # 3. 檢查「今天」是否已經發過
+            # 檢查今天是否已經發過
             if self.last_sent_date != today_str:
                 # 執行發送流程
                 await self.process_daily_todo(end_total_min)
@@ -211,38 +212,44 @@ class ShadowWorker(commands.Bot):
         if message.author.id == user.id or message.author.bot:
             return
 
-        is_dm = isinstance(message.channel, discord.DMChannel) and (message.author.id in DM_REPLY_LIST)
+        logging.debug("msg author id: {}", message.author.id)
+
+        is_dm = isinstance(message.channel, discord.DMChannel) and (message.author.id in self.dm_reply_list)
         is_mentioned = message.guild and message.guild.id == self.target_guild_id and user.mentioned_in(message)
         
         # 檢查伺服器與提及
         if is_mentioned or is_dm:
-            if user.mentioned_in(message):
-                delay = random.randint(5, 15) if is_dm else random.randint(10, 30)
-                reply_content = random.choice(REPLY_RESPONSES)
-                
-                # 安全獲取頻道名稱 (修正 Pyright 報錯)
-                channel_name = getattr(message.channel, "name", "私訊")
+            delay = random.randint(5, 15) if is_dm else random.randint(10, 30)
+            reply_content = random.choice(REPLY_RESPONSES)
+            
+            # 安全獲取頻道名稱 (修正 Pyright 報錯)
+            channel_name = getattr(message.channel, "name", "私訊")
 
-                # 輸出觸發提示
-                source = f"私訊 (來自 {message.author.name})" if is_dm else f"頻道 #{getattr(message.channel, 'name', '未知')}"
-                
-                # 等待隨機延遲
-                await asyncio.sleep(delay)
+            # 輸出觸發提示
+            source = f"私訊 (來自 {message.author.name})" if is_dm else f"頻道 #{getattr(message.channel, 'name', '未知')}"
 
-                # 模擬打字過程
-                # 基礎隨機打字時間 + 根據字數計算的時間
-                typing_wait = random.uniform(1.5, 5.0) + self.calculate_typing_duration(reply_content, mode="short")
-                
-                try:
-                    async with message.channel.typing():
-                        logging.info(f"⏳ [打字中] 正在模擬輸入內容，請稍候...")
-                        await asyncio.sleep(typing_wait)
-                    
+            logging.info(f"偵測到 {source}，將於 {delay} 秒後自動回覆...")
+           
+            # 等待隨機延遲
+            await asyncio.sleep(delay)
+
+            # 模擬打字過程
+            # 基礎隨機打字時間 + 根據字數計算的時間
+            typing_wait = random.uniform(1.5, 5.0) + self.calculate_typing_duration(reply_content, mode="short")
+          
+            try:
+                async with message.channel.typing():
+                    logging.info(f"⏳ [打字中] 正在模擬輸入內容，請稍候...")
+                    await asyncio.sleep(typing_wait)
                     # 回覆並記錄 Log
-                    await message.reply(reply_content)
+                    if is_dm:
+                        await message.channel.send(reply_content)
+                    else:
+                        await message.reply(reply_content)
+
                     logging.info(f"回覆成功 | 頻道: {channel_name} | 觸發者: {message.author.name} | 延遲: {delay}s | 內容: {reply_content}")
-                except Exception as e:
-                    logging.error(f"回覆失敗: {e}")
+            except Exception as e:
+                logging.error(f"回覆失敗: {e}")
 
 # 啟動
 if __name__ == "__main__":
