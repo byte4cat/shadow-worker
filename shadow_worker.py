@@ -78,7 +78,14 @@ class ShadowWorker(commands.Bot):
         guild = self.get_guild(self.target_guild_id)
         guild_name = guild.name if guild else "未知伺服器"
         print(f"監控目標: {guild_name} (ID: {self.target_guild_id})")
-        print(f"DM: {self.dm_reply_list})")
+        dm_names = []
+        for uid in self.dm_reply_list:
+            try:
+                u = await self.fetch_user(uid)
+                dm_names.append(f"{u.name}({uid})")
+            except:
+                dm_names.append(str(uid))
+        print(f"DM Whitelist: {', '.join(dm_names)}")
         todo_channel = self.get_channel(TODO_CHANNEL_ID)
         if not todo_channel:
             try:
@@ -205,6 +212,17 @@ class ShadowWorker(commands.Bot):
                 logging.info(f"✅ TODO 已成功發送至 #{channel_name}")
         except Exception as e:
             logging.error(f"❌ 發送 TODO 過程中發生錯誤: {e}")
+
+    async def get_username(self, user_id: int) -> str:
+        try:
+            # First, try to get from cache
+            user = self.get_user(user_id)
+            if not user:
+                # If not in cache, fetch from API
+                user = await self.fetch_user(user_id)
+            return user.name
+        except Exception as e:
+            return f"Unknown User ({user_id})"
 
     async def on_message(self, message: discord.Message):
         user = cast(discord.ClientUser, self.user)
