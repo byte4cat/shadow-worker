@@ -11,15 +11,20 @@ from typing import cast
 # 環境設定
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
-if not TOKEN:
-    raise ValueError("環境變數 DISCORD_TOKEN 未設定")
-
-_GUILD_ID_STR = os.getenv("TARGET_GUILD_ID")
-if not _GUILD_ID_STR:
-    raise ValueError("環境變數 TARGET_GUILD_ID 未設定")
-TARGET_GUILD_ID = int(_GUILD_ID_STR)
-
+TARGET_GUILD_ID = int(os.getenv("TARGET_GUILD_ID", 0))
 TODO_CHANNEL_ID = int(os.getenv("TODO_CHANNEL_ID", TARGET_GUILD_ID)) 
+
+# 解析時間點設定 (例如 07:55)
+_start_time_str = os.getenv("TODO_TIME", "07:50")
+_end_time_str = os.getenv("TODO_END_TIME", "07:59")
+START_H, START_M = map(int, _start_time_str.split(":"))
+END_H, END_M = map(int, _end_time_str.split(":"))
+# 解析工作日設定
+_workdays_str = os.getenv("TODO_WORKDAYS", "0,1,2,3,4")
+TODO_WORKDAYS = [int(d.strip()) for d in _workdays_str.split(",")]
+# 解析自動回覆語句
+_responses_str = os.getenv("REPLY_RESPONSES", "收到,了解,OK，收到,好的,我看一下")
+REPLY_RESPONSES = [r.strip() for r in _responses_str.split(",")]
 
 Typing_Duration_Max = 60.0
 
@@ -42,7 +47,7 @@ class ShadowWorker(commands.Bot):
             help_command=None, 
         )
         self.target_guild_id = TARGET_GUILD_ID
-        self.todo_sent_today = False 
+        self.last_sent_date = ""
 
     def calculate_typing_duration(self, text: str, mode: str = "long") -> float:
         """
@@ -94,57 +99,100 @@ class ShadowWorker(commands.Bot):
         
         if not self.daily_todo_task.is_running():
             self.daily_todo_task.start()
-            print(">>> 定時任務已啟動 (週一至週五 07:50~07:58)")
+            weekdays_map = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"]
+            workdays_readable = ", ".join([weekdays_map[d] for d in TODO_WORKDAYS])
+            print(f">>> 定時任務已啟動 執行日：{workdays_readable} (隨機時段: {_start_time_str} ~ {_end_time_str})")
         print("-" * 50)
 
-    @tasks.loop(seconds=60)
+    @tasks.loop(minutes=1)
     async def daily_todo_task(self):
         now = datetime.now()
-        if now.weekday() >= 5: return
-        
-        # 07:50 ~ 07:58
-        if (now.hour == 7 and 50 <= now.minute <= 58) and not self.todo_sent_today:
-            extra_delay = random.randint(1, 40)
-            logging.info(f"符合時間，等待 {extra_delay} 秒後發送 TODO...")
-            await asyncio.sleep(extra_delay)
-            await self.send_todo_content()
-            self.todo_sent_today = True 
+        today_str = now.strftime("%Y-%m-%d")
 
-        if now.hour == 8:
-            self.todo_sent_today = False
+        # 1. 檢查是否為工作日
+        if now.weekday() not in TODO_WORKDAYS:
+            return
 
-    async def send_todo_content(self):
+        # 2. 判斷是否在區間內
+        current_total_min = now.hour * 60 + now.minute
+        start_total_min = START_H * 60 + START_M
+        end_total_min = END_H * 60 + END_M
+
+        if start_total_min <= current_total_min <= end_total_min:
+            # 3. 檢查「今天」是否已經發過
+            if self.last_sent_date != today_str:
+                # 執行發送流程
+                await self.process_daily_todo(end_total_min)
+                # 發送成功後，更新日期標記
+                self.last_sent_date = today_str
+                logging.info(f"📆 今日任務完成標記已更新: {self.last_sent_date}")
+
+    @daily_todo_task.before_loop
+    async def before_daily_todo(self):
+        """ 快進到下一個整分 0 秒啟動 """
+        await self.wait_until_ready()
+        now = datetime.now()
+        seconds_until_next_minute = 60 - now.second
+        if seconds_until_next_minute > 0:
+            logging.info(f"系統啟動：將在 {seconds_until_next_minute} 秒後對齊整分並啟動巡檢...")
+            await asyncio.sleep(seconds_until_next_minute)
+
+    async def process_daily_todo(self, end_total_min: int):
         todo_path = "./todo.txt"
         try:
+            if not os.path.exists(todo_path): return
             with open(todo_path, "r", encoding="utf-8") as f:
                 content = f.read().strip()
-            if not content: 
-                logging.warning("todo.txt 內容為空，取消發送。")
-                return
+            if not content: return
 
+            # 計算模擬打字時長
+            typing_duration = self.calculate_typing_duration(content, mode="long")
+            
+            # 計算從「現在」到「區間最後一秒」的總剩餘秒數
+            now = datetime.now()
+            # 建立該時段結束的 datetime (例如今天 07:59:59)
+            end_dt = now.replace(hour=END_H, minute=END_M, second=59, microsecond=0)
+            remaining_seconds = (end_dt - now).total_seconds()
+            
+            # 隨機延遲上限 = 剩餘總秒數 - 打字時間 - 緩衝5秒
+            # 這樣就算隨機到最大值，訊息也能在區間結束前發出
+            max_available_delay = max(0.0, remaining_seconds - typing_duration - 5.0)
+            extra_delay = random.uniform(0.0, max_available_delay)
+
+            # 獲取頻道名稱 
             channel = self.get_channel(TODO_CHANNEL_ID) or await self.fetch_channel(TODO_CHANNEL_ID)
+            channel_name = getattr(channel, "name", "未知頻道")
 
+            logging.info(
+                f"⏰ 命中時段 ({_start_time_str}~{_end_time_str})\n"
+                f"📍 目標頻道: #{channel_name}\n"
+                f"📊 剩餘時間: {remaining_seconds:.1f}s | 預計打字: {typing_duration:.1f}s\n"
+                f"🎲 決定延遲: {extra_delay:.1f}s 後開始輸入\n"
+                f"📝 內容預覽:\n{content[:100]}{'...' if len(content) > 100 else ''}\n"
+                f"---------------"
+            ) 
+
+            await asyncio.sleep(extra_delay)
+            await self.send_todo_content(content, typing_duration)
+
+        except Exception as e:
+            logging.error(f"❌ 處理發送流程失敗: {e}")
+
+    async def send_todo_content(self, content: str, duration: float):
+        try:
+            channel = self.get_channel(TODO_CHANNEL_ID) or await self.fetch_channel(TODO_CHANNEL_ID)
             if isinstance(channel, discord.abc.Messageable):
-                duration = self.calculate_typing_duration(content, mode="long")
                 channel_name = getattr(channel, "name", "未知頻道")
-
-                logging.info(
-                    f"準備發送 TODO | 頻道: #{channel_name} | 預計打字: {duration:.1f}s\n"
-                    f"--- 內容摘要 ---\n{content}\n"
-                    f"---------------"
-                )
+                logging.info(f"開始執行發送流程 | 頻道: #{channel_name}\n--- 內容 ---\n{content}\n-----------")
 
                 async with channel.typing():
-                    logging.info(f"⏳ [打字中] 正在模擬輸入內容，請稍候...")
+                    logging.info(f"⏳ [打字中] 模擬輸入中...")
                     await asyncio.sleep(duration)
                 
                 await channel.send(content)
                 logging.info(f"✅ TODO 已成功發送至 #{channel_name}")
-            else:
-                logging.error(f"無法發送訊息：頻道 {TODO_CHANNEL_ID} 不支援發送訊息。")
-                
         except Exception as e:
-            logging.error(f"❌ 發送 TODO 失敗: {e}")
+            logging.error(f"❌ 發送 TODO 過程中發生錯誤: {e}")
 
     async def on_message(self, message: discord.Message):
         user = cast(discord.ClientUser, self.user)
@@ -156,8 +204,7 @@ class ShadowWorker(commands.Bot):
         if message.guild and message.guild.id == self.target_guild_id:
             if user.mentioned_in(message):
                 delay = random.randint(10, 30)
-                responses = ["收到", "了解", "OK，收到", "好的", "我看一下", "了解，處理中"]
-                reply_content = random.choice(responses)
+                reply_content = random.choice(REPLY_RESPONSES)
                 
                 # 安全獲取頻道名稱 (修正 Pyright 報錯)
                 channel_name = getattr(message.channel, "name", "私訊")
@@ -186,4 +233,4 @@ class ShadowWorker(commands.Bot):
 # 啟動
 if __name__ == "__main__":
     worker = ShadowWorker()
-    worker.run(TOKEN)
+    worker.run(cast(str, TOKEN))
