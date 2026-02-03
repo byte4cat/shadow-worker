@@ -13,6 +13,14 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 TARGET_GUILD_ID = int(os.getenv("TARGET_GUILD_ID", 0))
 TODO_CHANNEL_ID = int(os.getenv("TODO_CHANNEL_ID", TARGET_GUILD_ID)) 
+if not TOKEN:
+    raise ValueError("❌ 錯誤: DISCORD_TOKEN 未在 .env 檔案中設定")
+
+if not TARGET_GUILD_ID:
+    raise ValueError("❌ 錯誤: TARGET_GUILD_ID 未在 .env 檔案中設定")
+
+if not TODO_CHANNEL_ID:
+    raise ValueError("❌ 錯誤: TODO_CHANNEL_ID 未在 .env 檔案中設定")
 
 # 解析時間點設定 (例如 07:55)
 _start_time_str = os.getenv("TODO_TIME", "07:50")

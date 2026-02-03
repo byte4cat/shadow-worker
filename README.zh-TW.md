@@ -31,16 +31,28 @@ make run    # Start the assistant
 ```
 # Discord 帳號授權 Token
 # 獲取方式：瀏覽器 F12 -> Network -> 找 /messages 請求 -> Headers -> authorization
-DISCORD_TOKEN=your_account_token
+DISCORD_TOKEN=
 
 # 監控的目標伺服器 ID
 # 獲取方式：Discord -> 設定 -> 進階 開啟「開發者模式」 -> 右鍵點擊伺服器圖示 -> 複製伺服器 ID
-TARGET_GUILD_ID=target_server_id
+TARGET_GUILD_ID=
 
 # 定時發送 todo.txt 的目標頻道 ID
 # 獲取方式：右鍵點擊特定頻道 -> 複製頻道 ID
 # (可以跟 TARGET_GUILD_ID 裡的頻道一樣，也可以是不同伺服器的頻道)
-TODO_CHANNEL_ID=target_channel_id
+TODO_CHANNEL_ID=
+
+
+# 觸發時段設定 (24小時制)
+TODO_TIME=07:50
+TODO_END_TIME=07:59
+
+# 工作日設定 (0=週一, 1=週二, ..., 4=週五, 5=週六, 6=週日)
+# 預設週一至週五：0,1,2,3,4
+TODO_WORKDAYS=0,1,2,3,4
+
+# 自動回覆語句
+REPLY_RESPONSES=收到,了解,OK，收到,好的,我看一下,了解，處理中
 ```
 
 ## 內容準備

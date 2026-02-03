@@ -33,9 +33,29 @@ make run    # Start the assistant
 
 Create a .env file:
 ```
+# Discord Account Token (Self-Bot)
 DISCORD_TOKEN=your_account_token
-TARGET_GUILD_ID=target_server_id
-TODO_CHANNEL_ID=target_channel_id
+
+# Target Server ID
+TARGET_GUILD_ID=your_target_server_id
+
+# Target Channel ID for sending TODOs
+TODO_CHANNEL_ID=your_target_channel_id
+
+# --- Schedule Settings (24-hour format) ---
+# Start of the random window
+TODO_TIME=07:50
+# End of the random window
+TODO_END_TIME=07:59
+
+# --- Workday Settings ---
+# 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun
+# Default: Mon-Fri
+TODO_WORKDAYS=0,1,2,3,4
+
+# --- Auto-Response Settings ---
+# Comma-separated list of random replies for mentions (@me)
+REPLY_RESPONSES=OK,Understood,Got it,On it,I will check it out
 ```
 
 ## Content Preparation
