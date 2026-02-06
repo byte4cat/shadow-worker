@@ -7,6 +7,7 @@ import os
 from datetime import datetime
 from dotenv import load_dotenv
 from typing import cast
+from plyer import notification
 
 # 環境設定
 load_dotenv()
@@ -60,6 +61,18 @@ class ShadowWorker(commands.Bot):
         self.last_sent_date = ""
         self.dm_reply_list = DM_REPLY_LIST 
 
+    def send_desktop_notification(self, title, message, timeout: int):
+        """發送桌面通知 (Support Linux & Mac)"""
+        try:
+            notification.notify(
+                title=title,
+                message=message,
+                app_name='ShadowWorker',
+                timeout=timeout  # Seconds the notification stays on screen
+            )
+        except Exception as e:
+            logging.error(f"桌面通知發送失敗: {e}")
+
     def calculate_typing_duration(self, text: str, mode: str = "long") -> float:
         """
         計算模擬打字所需時間
@@ -78,6 +91,13 @@ class ShadowWorker(commands.Bot):
         guild = self.get_guild(self.target_guild_id)
         guild_name = guild.name if guild else "未知伺服器"
         print(f"監控目標: {guild_name} (ID: {self.target_guild_id})")
+
+        self.send_desktop_notification(
+            "🚀 Shadow Worker 啟動",
+            f"帳號: {user.name}\n目標: {guild_name}",
+            10
+        )
+
         dm_names = []
         for uid in self.dm_reply_list:
             try:
@@ -108,13 +128,16 @@ class ShadowWorker(commands.Bot):
                     typing_duration = self.calculate_typing_duration(content, mode="long")
                     print(f"【預讀 todo.txt 成功】內容如下：\n{content}")
                     print("-" * 50)
-                    print(f"💡 提示：發送時將執行約 {typing_duration:.1f} 秒的「打字中」狀態。")
+                    print(f"💡 提示：發送 TODO 時將執行約 {typing_duration:.1f} 秒的「打字中」狀態。")
                 else:
                     print("⚠️ 警告：todo.txt 內容為空！")
+                    self.send_desktop_notification("⚠️ 警告", "todo.txt 內容為空，將不會發送任務。", 10)
             except Exception as e:
                 print(f"❌ 讀取 todo.txt 時發生錯誤: {e}")
+                self.send_desktop_notification("❌ 錯誤", "無法讀取 todo.txt 檔案！", 10)
         else:
             print("⚠️ 警告：找不到 todo.txt 檔案！")
+            self.send_desktop_notification("❌ 錯誤", "找不到 todo.txt 檔案！", 10)
         
         if not self.daily_todo_task.is_running():
             self.daily_todo_task.start()
@@ -122,6 +145,7 @@ class ShadowWorker(commands.Bot):
             workdays_readable = ", ".join([weekdays_map[d] for d in TODO_WORKDAYS])
             print(f">>> 定時任務已啟動 執行日：{workdays_readable} (隨機時段: {_start_time_str} ~ {_end_time_str})")
         print("-" * 50)
+        logging.info(f"系統已啟動...")
 
     @tasks.loop(minutes=1)
     async def daily_todo_task(self):
@@ -153,7 +177,6 @@ class ShadowWorker(commands.Bot):
         now = datetime.now()
         seconds_until_next_minute = 60 - now.second
         if seconds_until_next_minute > 0:
-            logging.info(f"系統啟動：將在 {seconds_until_next_minute} 秒後對齊整分並啟動巡檢...")
             await asyncio.sleep(seconds_until_next_minute)
 
     async def process_daily_todo(self, end_total_min: int):
@@ -210,6 +233,12 @@ class ShadowWorker(commands.Bot):
                 
                 await channel.send(content)
                 logging.info(f"✅ TODO 已成功發送至 #{channel_name}")
+
+                self.send_desktop_notification(
+                    "ShadowWorker: 📔 TODO Sent", 
+                    f"Successfully sent to #{channel_name}",
+                    30,
+                )
         except Exception as e:
             logging.error(f"❌ 發送 TODO 過程中發生錯誤: {e}")
 
@@ -247,8 +276,13 @@ class ShadowWorker(commands.Bot):
             source = f"私訊 (來自 {message.author.name})" if is_dm else f"頻道 #{getattr(message.channel, 'name', '未知')}"
 
             logging.info(f"偵測到 {source}，將於 {delay} 秒後自動回覆...")
-           
-            # 等待隨機延遲
+
+            self.send_desktop_notification(
+                f"📩 收到來自 {message.author.name} 的訊息",
+                f"來源: {source}\n內容: {message.clean_content[:50]}",
+                30,
+            )
+
             await asyncio.sleep(delay)
 
             # 模擬打字過程
@@ -264,6 +298,12 @@ class ShadowWorker(commands.Bot):
                         await message.channel.send(reply_content)
                     else:
                         await message.reply(reply_content)
+
+                    self.send_desktop_notification(
+                        "✅ 自動回覆已發送",
+                        f"對象: {message.author.name}\n回覆內容: {reply_content}",
+                        30,
+                    )
 
                     logging.info(f"回覆成功 | 頻道: {channel_name} | 觸發者: {message.author.name} | 延遲: {delay}s | 內容: {reply_content}")
             except Exception as e:
